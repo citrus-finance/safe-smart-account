@@ -38,6 +38,7 @@ const EXPECTED_LAYOUT = [
         offset: 0,
         type: "t_mapping(t_address,t_mapping(t_bytes32,t_uint256))",
     },
+    { name: "globalNonce", slot: "9", offset: 0, type: "t_uint256" },
 ];
 
 describe("SafeStorage", async () => {

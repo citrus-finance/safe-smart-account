@@ -97,6 +97,29 @@ export const safeApproveHash = async (
     };
 };
 
+export const safeGlobalApproveHash = async (
+    signer: Signer,
+    safe: Contract,
+    safeTx: SafeTransaction,
+    skipOnChainApproval?: boolean,
+): Promise<SafeSignature> => {
+    if (!skipOnChainApproval) {
+        if (!signer.provider) throw Error("Provider required for on-chain approval");
+        const typedDataHash = utils.arrayify(calculateSafeTransactionHash(safe, safeTx, 0));
+        const signerSafe = safe.connect(signer);
+        await signerSafe.approveHash(typedDataHash);
+    }
+    const signerAddress = await signer.getAddress();
+    return {
+        signer: signerAddress,
+        data:
+            "0x000000000000000000000000" +
+            signerAddress.slice(2) +
+            "0000000000000000000000000000000000000000000000000000000000000000" +
+            "01",
+    };
+};
+
 export const safeSignTypedData = async (
     signer: Signer & TypedDataSigner,
     safe: Contract,
@@ -109,6 +132,18 @@ export const safeSignTypedData = async (
     return {
         signer: signerAddress,
         data: await signer._signTypedData({ verifyingContract: safe.address, chainId: cid }, EIP712_SAFE_TX_TYPE, safeTx),
+    };
+};
+
+export const safeSignGlobalTypedData = async (
+    signer: Signer & TypedDataSigner,
+    safe: Contract,
+    safeTx: SafeTransaction,
+): Promise<SafeSignature> => {
+    const signerAddress = await signer.getAddress();
+    return {
+        signer: signerAddress,
+        data: await signer._signTypedData({ verifyingContract: safe.address, chainId: 0 }, EIP712_SAFE_TX_TYPE, safeTx),
     };
 };
 
@@ -129,6 +164,14 @@ export const safeSignMessage = async (
 ): Promise<SafeSignature> => {
     const cid = chainId || (await signer.provider!.getNetwork()).chainId;
     return signHash(signer, calculateSafeTransactionHash(safe, safeTx, cid));
+};
+
+export const safeSignGlobalMessage = async (
+    signer: Signer,
+    safe: Contract,
+    safeTx: SafeTransaction,
+): Promise<SafeSignature> => {
+    return signHash(signer, calculateSafeTransactionHash(safe, safeTx, 0));
 };
 
 export const buildContractSignature = (signerAddress: string, signature: string): SafeSignature => {
@@ -199,6 +242,23 @@ export const executeTx = async (safe: Contract, safeTx: SafeTransaction, signatu
     );
 };
 
+export const executeGlobalTx = async (safe: Contract, safeTx: SafeTransaction, signatures: SafeSignature[], overrides?: any): Promise<any> => {
+    const signatureBytes = buildSignatureBytes(signatures);
+    return safe.execGlobalTransaction(
+        safeTx.to,
+        safeTx.value,
+        safeTx.data,
+        safeTx.operation,
+        safeTx.safeTxGas,
+        safeTx.baseGas,
+        safeTx.gasPrice,
+        safeTx.gasToken,
+        safeTx.refundReceiver,
+        signatureBytes,
+        overrides || {},
+    );
+};
+
 export const populateExecuteTx = async (
     safe: Contract,
     safeTx: SafeTransaction,
@@ -248,6 +308,11 @@ export const executeTxWithSigners = async (safe: Contract, tx: SafeTransaction, 
     return executeTx(safe, tx, sigs, overrides);
 };
 
+export const executeGlobalTxWithSigners = async (safe: Contract, tx: SafeTransaction, signers: Wallet[], overrides?: any) => {
+    const sigs = await Promise.all(signers.map((signer) => safeSignGlobalTypedData(signer, safe, tx)));
+    return executeGlobalTx(safe, tx, sigs, overrides);
+};
+
 export const executeContractCallWithSigners = async (
     safe: Contract,
     contract: Contract,
@@ -259,6 +324,19 @@ export const executeContractCallWithSigners = async (
 ) => {
     const tx = buildContractCall(contract, method, params, await safe.nonce(), delegateCall, overrides);
     return executeTxWithSigners(safe, tx, signers);
+};
+
+export const executeContractGlobalCallWithSigners = async (
+    safe: Contract,
+    contract: Contract,
+    method: string,
+    params: any[],
+    signers: Wallet[],
+    delegateCall?: boolean,
+    overrides?: Partial<SafeTransaction>,
+) => {
+    const tx = buildContractCall(contract, method, params, await safe.globalNonce(), delegateCall, overrides);
+    return executeGlobalTxWithSigners(safe, tx, signers);
 };
 
 export const buildSafeTransaction = (template: {

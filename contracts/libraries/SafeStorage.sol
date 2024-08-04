@@ -21,4 +21,5 @@ contract SafeStorage {
     bytes32 internal _deprecatedDomainSeparator;
     mapping(bytes32 => uint256) internal signedMessages;
     mapping(address => mapping(bytes32 => uint256)) internal approvedHashes;
+    uint256 internal globalNonce;
 }
